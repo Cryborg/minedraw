@@ -7,8 +7,8 @@ export async function loadTextures() {
     texturesGrid.innerHTML = '<div class="loading">Chargement des textures...</div>';
 
     try {
-        // Fetch the list of texture files
-        const response = await fetch('get-textures.php');
+        // Fetch the list of texture files from static JSON
+        const response = await fetch('textures.json');
         const textures = await response.json();
 
         state.allTextures = textures.map(path => ({
