@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MineDraw - Éditeur de Pixel Art Minecraft</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🎨 MineDraw</h1>
+            <nav class="menu-bar">
+                <div class="menu-item">
+                    <button class="menu-button">Fichier</button>
+                    <div class="dropdown-menu">
+                        <button id="menuExportBtn" class="dropdown-item">💾 Exporter PNG (Ctrl+E)</button>
+                    </div>
+                </div>
+                <div class="menu-item">
+                    <button class="menu-button">Édition</button>
+                    <div class="dropdown-menu">
+                        <button id="menuUndoBtn" class="dropdown-item">↶ Annuler (Ctrl+Z)</button>
+                        <button id="menuRedoBtn" class="dropdown-item">↷ Refaire (Ctrl+Shift+Z)</button>
+                        <div class="dropdown-divider"></div>
+                        <button id="menuEraserBtn" class="dropdown-item">
+                            <span class="menu-icon eraser-icon">✓</span> 🧹 Gomme (E)
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button id="menuClearBtn" class="dropdown-item">🗑️ Effacer le calque</button>
+                        <button id="menuFillBtn" class="dropdown-item">🪣 Remplir le calque</button>
+                    </div>
+                </div>
+                <div class="menu-item">
+                    <button class="menu-button">Affichage</button>
+                    <div class="dropdown-menu">
+                        <button id="menuGridBtn" class="dropdown-item">
+                            <span class="menu-icon">✓</span> Grille
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <div class="dropdown-submenu">
+                            <span class="dropdown-label">🌍 Fond d'écran</span>
+                            <button class="dropdown-item" data-bg="day-sun">☀️ Jour avec soleil</button>
+                            <button class="dropdown-item" data-bg="day">🌤️ Jour sans soleil</button>
+                            <button class="dropdown-item" data-bg="night-moon">🌙 Nuit avec lune</button>
+                            <button class="dropdown-item" data-bg="night-stars">✨ Nuit étoilée</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="menu-item">
+                    <button class="menu-button">Calques</button>
+                    <div class="dropdown-menu" id="layersDropdownMenu">
+                        <!-- Layers will be rendered here -->
+                    </div>
+                </div>
+            </nav>
+            <div class="header-info">
+                <div class="quick-toolbar">
+                    <button id="quickEraserBtn" class="quick-btn" title="Gomme (E)">🧹</button>
+                    <button id="quickUndoBtn" class="quick-btn" title="Annuler (Ctrl+Z)">↶</button>
+                    <button id="quickRedoBtn" class="quick-btn" title="Refaire (Ctrl+Shift+Z)">↷</button>
+                </div>
+                <div class="zoom-controls">
+                    <button id="zoomOut" class="tool-btn">➖</button>
+                    <span id="zoomLevel">100%</span>
+                    <button id="zoomIn" class="tool-btn">➕</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <div class="main-content">
+            <!-- Sidebar with textures -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>🧱 Textures</h2>
+                    <div class="search-wrapper">
+                        <input type="text" id="searchTextures" placeholder="Rechercher..." class="search-input">
+                        <button id="clearSearch" class="clear-search" title="Effacer la recherche">✕</button>
+                    </div>
+                </div>
+
+                <div class="current-texture">
+                    <span>Texture sélectionnée :</span>
+                    <div class="current-texture-preview" id="currentTexturePreview">
+                        <span class="no-texture">Aucune</span>
+                    </div>
+                    <span id="currentTextureName">Aucune texture</span>
+                </div>
+
+                <div class="categories" id="categories">
+                    <button class="category-btn active" data-category="all">📦 Tous</button>
+                    <button class="category-btn" data-category="stone">🪨 Pierre</button>
+                    <button class="category-btn" data-category="wood">🪵 Bois</button>
+                    <button class="category-btn" data-category="dirt">🌱 Terre</button>
+                    <button class="category-btn" data-category="glass">🪟 Verre</button>
+                    <button class="category-btn" data-category="wool">🧶 Laine</button>
+                    <button class="category-btn" data-category="concrete">🎨 Béton</button>
+                    <button class="category-btn" data-category="terracotta">🏺 Terre cuite</button>
+                    <button class="category-btn" data-category="ore">💎 Minerais</button>
+                    <button class="category-btn" data-category="plant">🌿 Plantes</button>
+                    <button class="category-btn" data-category="other">📋 Autres</button>
+                </div>
+
+                <div class="textures-grid" id="texturesGrid">
+                    <!-- Textures will be loaded here -->
+                </div>
+            </aside>
+
+            <!-- Canvas area -->
+            <div class="canvas-area">
+                <div class="canvas-wrapper" id="canvasWrapper">
+                    <div class="galaxy-overlay"></div>
+                    <div class="canvas-container" id="canvasContainer">
+                        <canvas id="drawingCanvas" width="1600" height="960"></canvas>
+                        <canvas id="gridCanvas" width="1600" height="960"></canvas>
+                        <canvas id="previewCanvas" width="1600" height="960"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

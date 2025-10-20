@@ -1,0 +1,847 @@
+// MineDraw - Minecraft Pixel Art Editor
+// Configuration
+const GRID_WIDTH = 50;
+const GRID_HEIGHT = 30;
+const BLOCK_SIZE = 32; // pixels per block on canvas
+
+// State
+let currentTexture = null;
+let currentTexturePath = null;
+let isDrawing = false;
+let isErasing = false;
+let isDeletingInStroke = false; // Track if we're deleting in current stroke
+let showGrid = true;
+let gridData = [];
+let undoStack = [];
+let redoStack = [];
+let allTextures = [];
+let filteredTextures = [];
+let currentCategory = 'all';
+let zoomLevel = 1;
+
+// Canvas elements
+const drawingCanvas = document.getElementById('drawingCanvas');
+const gridCanvas = document.getElementById('gridCanvas');
+const previewCanvas = document.getElementById('previewCanvas');
+const canvasWrapper = document.getElementById('canvasWrapper');
+const drawingCtx = drawingCanvas.getContext('2d');
+const gridCtx = gridCanvas.getContext('2d');
+const previewCtx = previewCanvas.getContext('2d');
+
+// Initialize grid data
+function initGrid() {
+    gridData = Array(GRID_HEIGHT).fill(null).map(() => Array(GRID_WIDTH).fill(null));
+}
+
+// Draw grid lines
+function drawGrid() {
+    gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+
+    if (!showGrid) return;
+
+    gridCtx.strokeStyle = '#ddd';
+    gridCtx.lineWidth = 1;
+
+    // Vertical lines
+    for (let x = 0; x <= GRID_WIDTH; x++) {
+        gridCtx.beginPath();
+        gridCtx.moveTo(x * BLOCK_SIZE, 0);
+        gridCtx.lineTo(x * BLOCK_SIZE, GRID_HEIGHT * BLOCK_SIZE);
+        gridCtx.stroke();
+    }
+
+    // Horizontal lines
+    for (let y = 0; y <= GRID_HEIGHT; y++) {
+        gridCtx.beginPath();
+        gridCtx.moveTo(0, y * BLOCK_SIZE);
+        gridCtx.lineTo(GRID_WIDTH * BLOCK_SIZE, y * BLOCK_SIZE);
+        gridCtx.stroke();
+    }
+}
+
+// Toggle grid visibility
+function toggleGrid() {
+    showGrid = !showGrid;
+    drawGrid();
+    document.getElementById('gridBtn').classList.toggle('active');
+
+    // Save grid preference to localStorage
+    localStorage.setItem('minedraw_showGrid', showGrid);
+}
+
+// Load all textures from the textures/block directory
+async function loadTextures() {
+    const texturesGrid = document.getElementById('texturesGrid');
+    texturesGrid.innerHTML = '<div class="loading">Chargement des textures...</div>';
+
+    try {
+        // Fetch the list of texture files
+        const response = await fetch('get-textures.php');
+        const textures = await response.json();
+
+        allTextures = textures.map(path => ({
+            path: path,
+            name: path.split('/').pop().replace('.png', ''),
+            category: categorizeTexture(path)
+        }));
+
+        filteredTextures = allTextures;
+        renderTextures();
+    } catch (error) {
+        console.error('Error loading textures:', error);
+        texturesGrid.innerHTML = '<div class="loading">Erreur de chargement</div>';
+    }
+}
+
+// Categorize texture based on filename
+function categorizeTexture(path) {
+    const filename = path.toLowerCase();
+
+    if (filename.includes('stone') || filename.includes('cobblestone') || filename.includes('andesite') ||
+        filename.includes('diorite') || filename.includes('granite') || filename.includes('basalt') ||
+        filename.includes('brick') && !filename.includes('clay')) {
+        return 'stone';
+    }
+    if (filename.includes('wood') || filename.includes('oak') || filename.includes('spruce') ||
+        filename.includes('birch') || filename.includes('jungle') || filename.includes('acacia') ||
+        filename.includes('dark_oak') || filename.includes('crimson') || filename.includes('warped') ||
+        filename.includes('plank') || filename.includes('log')) {
+        return 'wood';
+    }
+    if (filename.includes('dirt') || filename.includes('grass') || filename.includes('podzol') ||
+        filename.includes('mycelium') || filename.includes('sand') || filename.includes('gravel')) {
+        return 'dirt';
+    }
+    if (filename.includes('glass') && !filename.includes('pane_top')) {
+        return 'glass';
+    }
+    if (filename.includes('wool')) {
+        return 'wool';
+    }
+    if (filename.includes('concrete') && !filename.includes('powder')) {
+        return 'concrete';
+    }
+    if (filename.includes('terracotta') || filename.includes('glazed') || filename.includes('clay')) {
+        return 'terracotta';
+    }
+    if (filename.includes('ore') || filename.includes('diamond') || filename.includes('emerald') ||
+        filename.includes('gold') || filename.includes('iron') || filename.includes('coal') ||
+        filename.includes('lapis') || filename.includes('redstone') || filename.includes('quartz')) {
+        return 'ore';
+    }
+    if (filename.includes('leaves') || filename.includes('flower') || filename.includes('plant') ||
+        filename.includes('sapling') || filename.includes('vine') || filename.includes('wheat') ||
+        filename.includes('carrot') || filename.includes('potato') || filename.includes('beetroot') ||
+        filename.includes('melon') || filename.includes('pumpkin') || filename.includes('cactus') ||
+        filename.includes('mushroom') || filename.includes('fungus') || filename.includes('roots')) {
+        return 'plant';
+    }
+
+    return 'other';
+}
+
+// Render textures in the sidebar
+function renderTextures() {
+    const texturesGrid = document.getElementById('texturesGrid');
+    texturesGrid.innerHTML = '';
+
+    const texturesToShow = currentCategory === 'all'
+        ? filteredTextures
+        : filteredTextures.filter(t => t.category === currentCategory);
+
+    if (texturesToShow.length === 0) {
+        texturesGrid.innerHTML = '<div class="loading">Aucune texture trouvée</div>';
+        return;
+    }
+
+    texturesToShow.forEach(texture => {
+        const item = document.createElement('div');
+        item.className = 'texture-item';
+        item.title = texture.name;
+
+        const img = document.createElement('img');
+        img.src = texture.path;
+        img.alt = texture.name;
+        img.loading = 'lazy';
+
+        item.appendChild(img);
+        item.addEventListener('click', () => selectTexture(texture.path, img.src));
+
+        texturesGrid.appendChild(item);
+    });
+}
+
+// Select a texture
+function selectTexture(path, src) {
+    currentTexturePath = path;
+
+    // Remove previous selection
+    document.querySelectorAll('.texture-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+
+    // Add selection to clicked item (if event exists)
+    if (event && event.target) {
+        const item = event.target.closest('.texture-item');
+        if (item) item.classList.add('selected');
+    }
+
+    // Update current texture preview
+    const preview = document.getElementById('currentTexturePreview');
+    preview.innerHTML = `<img src="${src}" alt="Current texture">`;
+
+    const name = path.split('/').pop().replace('.png', '');
+    document.getElementById('currentTextureName').textContent = name;
+
+    // Load the texture image
+    currentTexture = new Image();
+    currentTexture.src = src;
+
+    // Disable eraser mode
+    isErasing = false;
+    document.getElementById('eraserBtn').classList.remove('active');
+}
+
+// Pick a block from the canvas (eyedropper)
+function pickBlock(x, y) {
+    if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) return;
+
+    const texturePath = gridData[y][x];
+
+    // If no block at this position, activate eraser
+    if (!texturePath) {
+        isErasing = true;
+        document.getElementById('eraserBtn').classList.add('active');
+        return;
+    }
+
+    // Select this texture
+    selectTexture(texturePath, texturePath);
+
+    // Highlight the texture in the sidebar if visible
+    document.querySelectorAll('.texture-item').forEach(item => {
+        const img = item.querySelector('img');
+        if (img && img.src.includes(texturePath.split('/').pop())) {
+            item.classList.add('selected');
+            item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    });
+}
+
+// Get grid coordinates from mouse/touch position
+function getGridCoords(e) {
+    const rect = drawingCanvas.getBoundingClientRect();
+    const scaleX = drawingCanvas.width / rect.width;
+    const scaleY = drawingCanvas.height / rect.height;
+
+    const x = Math.floor(((e.clientX - rect.left) * scaleX) / BLOCK_SIZE);
+    const y = Math.floor(((e.clientY - rect.top) * scaleY) / BLOCK_SIZE);
+
+    return { x, y };
+}
+
+// Draw a block at specific grid position
+function drawBlock(x, y, texture = currentTexture, texturePath = currentTexturePath, forceDelete = false) {
+    if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) return;
+
+    if (isErasing || !texture || forceDelete) {
+        // Erase the block
+        drawingCtx.clearRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+        gridData[y][x] = null;
+    } else {
+        // If we're in delete mode for this stroke, always delete
+        if (isDeletingInStroke) {
+            drawingCtx.clearRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            gridData[y][x] = null;
+        } else {
+            // Draw the texture
+            drawingCtx.drawImage(texture, x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            gridData[y][x] = texturePath;
+        }
+    }
+
+    // Auto-save to localStorage
+    saveToLocalStorage();
+}
+
+// Save state for undo
+function saveState() {
+    undoStack.push(JSON.parse(JSON.stringify(gridData)));
+    if (undoStack.length > 50) {
+        undoStack.shift();
+    }
+    redoStack = [];
+}
+
+// Undo
+function undo() {
+    if (undoStack.length === 0) return;
+
+    redoStack.push(JSON.parse(JSON.stringify(gridData)));
+    gridData = undoStack.pop();
+    redrawCanvas();
+    saveToLocalStorage();
+}
+
+// Redo
+function redo() {
+    if (redoStack.length === 0) return;
+
+    undoStack.push(JSON.parse(JSON.stringify(gridData)));
+    gridData = redoStack.pop();
+    redrawCanvas();
+    saveToLocalStorage();
+}
+
+// Redraw entire canvas from grid data
+async function redrawCanvas() {
+    drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+
+    const textureCache = {};
+
+    for (let y = 0; y < GRID_HEIGHT; y++) {
+        for (let x = 0; x < GRID_WIDTH; x++) {
+            const texturePath = gridData[y][x];
+            if (texturePath) {
+                if (!textureCache[texturePath]) {
+                    textureCache[texturePath] = new Image();
+                    textureCache[texturePath].src = texturePath;
+                    await new Promise(resolve => {
+                        textureCache[texturePath].onload = resolve;
+                    });
+                }
+                drawingCtx.drawImage(textureCache[texturePath], x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            }
+        }
+    }
+}
+
+// Clear canvas
+function clearCanvas() {
+    if (confirm('Êtes-vous sûr de vouloir effacer tout le dessin ?')) {
+        saveState();
+        drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+        initGrid();
+        saveToLocalStorage();
+    }
+}
+
+// Fill entire canvas with current texture
+function fillCanvas() {
+    if (!currentTexture) {
+        alert('Veuillez d\'abord sélectionner une texture');
+        return;
+    }
+
+    if (confirm('Remplir toute la grille avec la texture sélectionnée ?')) {
+        saveState();
+        for (let y = 0; y < GRID_HEIGHT; y++) {
+            for (let x = 0; x < GRID_WIDTH; x++) {
+                drawBlock(x, y);
+            }
+        }
+        saveToLocalStorage();
+    }
+}
+
+// Export canvas as PNG with background
+function exportCanvas() {
+    // Create a temporary canvas for export
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = drawingCanvas.width;
+    exportCanvas.height = drawingCanvas.height;
+    const exportCtx = exportCanvas.getContext('2d');
+
+    // Get current background type
+    const bgSelect = document.getElementById('bgSelect').value;
+
+    // Draw background
+    drawBackground(exportCtx, bgSelect, exportCanvas.width, exportCanvas.height);
+
+    // Draw the drawing canvas on top
+    exportCtx.drawImage(drawingCanvas, 0, 0);
+
+    // Export
+    const link = document.createElement('a');
+    link.download = `minedraw-${Date.now()}.png`;
+    link.href = exportCanvas.toDataURL('image/png');
+    link.click();
+}
+
+// Draw background on a context
+function drawBackground(ctx, bgType, width, height) {
+    // Create gradient based on background type
+    let gradient;
+
+    if (bgType === 'day-sun' || bgType === 'day') {
+        // Day sky
+        gradient = ctx.createLinearGradient(0, 0, 0, height);
+        gradient.addColorStop(0, '#87CEEB');
+        gradient.addColorStop(1, '#B0D9F5');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw sun if day-sun
+        if (bgType === 'day-sun') {
+            const sunGradient = ctx.createLinearGradient(width - 140, 40, width - 60, 120);
+            sunGradient.addColorStop(0, '#FDB813');
+            sunGradient.addColorStop(0.5, '#FFDD44');
+            sunGradient.addColorStop(1, '#FDB813');
+            ctx.fillStyle = sunGradient;
+            ctx.fillRect(width - 140, 40, 80, 80);
+        }
+    } else if (bgType === 'night-moon' || bgType === 'night-stars') {
+        // Night sky
+        gradient = ctx.createLinearGradient(0, 0, 0, height);
+        gradient.addColorStop(0, '#0a1628');
+        gradient.addColorStop(1, '#1a2744');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw galaxy for night-stars
+        if (bgType === 'night-stars') {
+            drawGalaxy(ctx, width, height);
+            drawStars(ctx, width, height);
+        }
+
+        // Draw moon if night-moon
+        if (bgType === 'night-moon') {
+            const moonGradient = ctx.createLinearGradient(width - 140, 40, width - 60, 120);
+            moonGradient.addColorStop(0, '#E8E8E8');
+            moonGradient.addColorStop(0.5, '#FFFFFF');
+            moonGradient.addColorStop(1, '#E8E8E8');
+            ctx.fillStyle = moonGradient;
+            ctx.fillRect(width - 140, 40, 80, 80);
+        }
+    }
+}
+
+// Draw galaxy effect
+function drawGalaxy(ctx, width, height) {
+    ctx.save();
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate(-12 * Math.PI / 180);
+
+    // Create elliptical gradient
+    const maxDim = Math.max(width, height);
+    const galaxyGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, maxDim * 1.2);
+    galaxyGradient.addColorStop(0, 'rgba(220, 230, 255, 0.18)');
+    galaxyGradient.addColorStop(0.15, 'rgba(180, 200, 255, 0.12)');
+    galaxyGradient.addColorStop(0.3, 'rgba(140, 170, 255, 0.07)');
+    galaxyGradient.addColorStop(0.5, 'rgba(100, 140, 255, 0.03)');
+    galaxyGradient.addColorStop(0.7, 'transparent');
+
+    ctx.fillStyle = galaxyGradient;
+    ctx.globalAlpha = 0.75;
+
+    // Scale to create ellipse effect and ensure full coverage
+    ctx.scale(1.5, 0.5);
+    ctx.fillRect(-maxDim * 1.5, -maxDim, maxDim * 3, maxDim * 2);
+
+    ctx.restore();
+}
+
+// Draw stars
+function drawStars(ctx, width, height) {
+    const stars = [
+        // Large stars (3px)
+        [0.20, 0.30, 3], [0.60, 0.70, 3], [0.90, 0.60, 3], [0.15, 0.15, 3], [0.75, 0.25, 3],
+        [0.40, 0.85, 3], [0.85, 0.90, 3], [0.10, 0.65, 3], [0.55, 0.45, 3], [0.30, 0.10, 3],
+        [0.48, 0.92, 3], [0.82, 0.38, 3], [0.05, 0.05, 3], [0.95, 0.95, 3], [0.28, 0.58, 3],
+        [0.72, 0.12, 3], [0.18, 0.48, 3], [0.62, 0.82, 3], [0.35, 0.68, 3], [0.88, 0.28, 3],
+        // Medium stars (2.25px)
+        [0.45, 0.55, 2.25], [0.25, 0.75, 2.25], [0.65, 0.35, 2.25], [0.95, 0.15, 2.25], [0.05, 0.40, 2.25],
+        [0.80, 0.80, 2.25], [0.35, 0.20, 2.25], [0.70, 0.95, 2.25], [0.52, 0.08, 2.25], [0.14, 0.72, 2.25],
+        [0.78, 0.48, 2.25], [0.92, 0.78, 2.25], [0.08, 0.92, 2.25], [0.42, 0.38, 2.25], [0.68, 0.58, 2.25],
+        [0.22, 0.42, 2.25],
+        // Small stars (1.5px) - subset for performance
+        [0.50, 0.50, 1.5], [0.80, 0.10, 1.5], [0.33, 0.80, 1.5], [0.70, 0.40, 1.5], [0.12, 0.50, 1.5],
+        [0.88, 0.45, 1.5], [0.42, 0.15, 1.5], [0.58, 0.90, 1.5], [0.22, 0.22, 1.5], [0.68, 0.68, 1.5],
+        [0.15, 0.88, 1.5], [0.92, 0.32, 1.5], [0.38, 0.62, 1.5], [0.52, 0.78, 1.5], [0.08, 0.18, 1.5],
+        [0.78, 0.58, 1.5], [0.17, 0.35, 1.5], [0.63, 0.25, 1.5], [0.32, 0.52, 1.5], [0.85, 0.65, 1.5],
+        [0.48, 0.72, 1.5], [0.93, 0.08, 1.5], [0.07, 0.28, 1.5], [0.55, 0.05, 1.5], [0.27, 0.95, 1.5],
+        [0.74, 0.88, 1.5], [0.11, 0.62, 1.5], [0.97, 0.52, 1.5], [0.44, 0.44, 1.5], [0.66, 0.77, 1.5],
+        [0.19, 0.08, 1.5], [0.86, 0.22, 1.5]
+    ];
+
+    ctx.fillStyle = 'white';
+    stars.forEach(([x, y, size]) => {
+        ctx.beginPath();
+        ctx.arc(x * width, y * height, size / 2, 0, Math.PI * 2);
+        ctx.fill();
+    });
+}
+
+// Zoom functions
+function zoomIn() {
+    zoomLevel = Math.min(zoomLevel + 0.1, 2);
+    updateZoom();
+}
+
+function zoomOut() {
+    zoomLevel = Math.max(zoomLevel - 0.1, 0.5);
+    updateZoom();
+}
+
+function updateZoom() {
+    const container = document.getElementById('canvasContainer');
+    container.style.transform = `scale(${zoomLevel})`;
+    document.getElementById('zoomLevel').textContent = `${Math.round(zoomLevel * 100)}%`;
+}
+
+// Preview block under cursor
+function showPreview(x, y) {
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+    if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) return;
+    if (!currentTexture || isErasing) return;
+
+    // Draw preview with transparency
+    previewCtx.drawImage(currentTexture, x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+}
+
+function clearPreview() {
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+}
+
+// Event Listeners
+
+// Mouse events for drawing
+let hasDrawnThisStroke = false;
+
+drawingCanvas.addEventListener('mousedown', (e) => {
+    const { x, y } = getGridCoords(e);
+
+    // Right click - pick color (eyedropper)
+    if (e.button === 2) {
+        e.preventDefault();
+        pickBlock(x, y);
+        return;
+    }
+
+    // Left click - draw
+    if (e.button === 0) {
+        isDrawing = true;
+        hasDrawnThisStroke = false;
+        saveState();
+
+        // Determine if we should delete for this entire stroke
+        // If clicking on the same block, switch to delete mode
+        if (gridData[y][x] === currentTexturePath && !isErasing && currentTexture) {
+            isDeletingInStroke = true;
+        } else {
+            isDeletingInStroke = false;
+        }
+
+        drawBlock(x, y);
+        hasDrawnThisStroke = true;
+    }
+});
+
+// Prevent context menu on right click
+drawingCanvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+});
+
+drawingCanvas.addEventListener('mousemove', (e) => {
+    const { x, y } = getGridCoords(e);
+
+    // Draw if mouse is pressed
+    if (isDrawing) {
+        clearPreview(); // Clear preview when drawing
+        drawBlock(x, y);
+    } else {
+        // Show preview only when not drawing
+        showPreview(x, y);
+    }
+});
+
+drawingCanvas.addEventListener('mouseup', () => {
+    isDrawing = false;
+    hasDrawnThisStroke = false;
+    isDeletingInStroke = false;
+});
+
+drawingCanvas.addEventListener('mouseleave', () => {
+    isDrawing = false;
+    hasDrawnThisStroke = false;
+    isDeletingInStroke = false;
+    clearPreview();
+});
+
+// Touch events for mobile/tablet
+let lastTouchDistance = 0;
+let lastScrollPos = { x: 0, y: 0 };
+let isPinching = false;
+
+drawingCanvas.addEventListener('touchstart', (e) => {
+    // Two fingers - prepare for pinch or scroll
+    if (e.touches.length === 2) {
+        e.preventDefault();
+        isPinching = true;
+        isDrawing = false;
+
+        // Calculate initial distance for pinch
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        lastTouchDistance = Math.hypot(
+            touch2.clientX - touch1.clientX,
+            touch2.clientY - touch1.clientY
+        );
+
+        // Store initial scroll position
+        lastScrollPos = {
+            x: canvasWrapper.scrollLeft,
+            y: canvasWrapper.scrollTop
+        };
+        return;
+    }
+
+    // One finger - draw
+    if (e.touches.length === 1 && !isPinching) {
+        e.preventDefault();
+        isDrawing = true;
+        hasDrawnThisStroke = false;
+        saveState();
+
+        const touch = e.touches[0];
+        const { x, y } = getGridCoords(touch);
+
+        // Determine if we should delete for this entire stroke
+        if (gridData[y][x] === currentTexturePath && !isErasing && currentTexture) {
+            isDeletingInStroke = true;
+        } else {
+            isDeletingInStroke = false;
+        }
+
+        drawBlock(x, y);
+        hasDrawnThisStroke = true;
+    }
+});
+
+drawingCanvas.addEventListener('touchmove', (e) => {
+    // Two fingers - pinch to zoom or scroll
+    if (e.touches.length === 2) {
+        e.preventDefault();
+
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+
+        // Calculate current distance for pinch
+        const currentDistance = Math.hypot(
+            touch2.clientX - touch1.clientX,
+            touch2.clientY - touch1.clientY
+        );
+
+        // Pinch to zoom
+        if (lastTouchDistance > 0) {
+            const delta = currentDistance - lastTouchDistance;
+            const zoomFactor = delta > 0 ? 0.02 : -0.02;
+            zoomLevel = Math.max(0.5, Math.min(2, zoomLevel + zoomFactor));
+            updateZoom();
+        }
+
+        lastTouchDistance = currentDistance;
+
+        // Two-finger scroll
+        const midX = (touch1.clientX + touch2.clientX) / 2;
+        const midY = (touch1.clientY + touch2.clientY) / 2;
+
+        if (lastScrollPos.midX !== undefined) {
+            const deltaX = lastScrollPos.midX - midX;
+            const deltaY = lastScrollPos.midY - midY;
+            canvasWrapper.scrollLeft += deltaX;
+            canvasWrapper.scrollTop += deltaY;
+        }
+
+        lastScrollPos.midX = midX;
+        lastScrollPos.midY = midY;
+
+        return;
+    }
+
+    // One finger - draw
+    if (e.touches.length === 1 && isDrawing && !isPinching) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const { x, y } = getGridCoords(touch);
+        drawBlock(x, y);
+    }
+});
+
+drawingCanvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+
+    // Reset pinching state when no more touches
+    if (e.touches.length === 0) {
+        isDrawing = false;
+        isPinching = false;
+        lastTouchDistance = 0;
+        isDeletingInStroke = false;
+        hasDrawnThisStroke = false;
+        lastScrollPos.midX = undefined;
+        lastScrollPos.midY = undefined;
+    }
+
+    // Reset pinching if only one finger left
+    if (e.touches.length === 1) {
+        isPinching = false;
+        lastTouchDistance = 0;
+        lastScrollPos.midX = undefined;
+        lastScrollPos.midY = undefined;
+    }
+});
+
+// Toolbar buttons
+document.getElementById('clearBtn').addEventListener('click', clearCanvas);
+document.getElementById('fillBtn').addEventListener('click', fillCanvas);
+document.getElementById('eraserBtn').addEventListener('click', () => {
+    isErasing = !isErasing;
+    document.getElementById('eraserBtn').classList.toggle('active');
+});
+document.getElementById('gridBtn').addEventListener('click', toggleGrid);
+document.getElementById('undoBtn').addEventListener('click', undo);
+document.getElementById('redoBtn').addEventListener('click', redo);
+document.getElementById('exportBtn').addEventListener('click', exportCanvas);
+document.getElementById('zoomIn').addEventListener('click', zoomIn);
+document.getElementById('zoomOut').addEventListener('click', zoomOut);
+
+// Background selector
+document.getElementById('bgSelect').addEventListener('change', (e) => {
+    const bgValue = e.target.value;
+    const wrapper = canvasWrapper;
+
+    // Remove all background classes
+    wrapper.classList.remove('bg-day-sun', 'bg-day', 'bg-night-moon', 'bg-night-stars');
+
+    // Add the selected background class
+    wrapper.classList.add('bg-' + bgValue);
+
+    // Save preference to localStorage
+    localStorage.setItem('minedraw_background', bgValue);
+});
+
+// Category buttons
+document.querySelectorAll('.category-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentCategory = btn.dataset.category;
+        renderTextures();
+    });
+});
+
+// Search input
+const searchInput = document.getElementById('searchTextures');
+const clearSearchBtn = document.getElementById('clearSearch');
+
+searchInput.addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase();
+    filteredTextures = allTextures.filter(t => t.name.toLowerCase().includes(searchTerm));
+    renderTextures();
+
+    // Show/hide clear button
+    if (searchTerm.length > 0) {
+        clearSearchBtn.classList.add('visible');
+    } else {
+        clearSearchBtn.classList.remove('visible');
+    }
+});
+
+// Clear search button
+clearSearchBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    filteredTextures = allTextures;
+    renderTextures();
+    clearSearchBtn.classList.remove('visible');
+    searchInput.focus();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'z') {
+            e.preventDefault();
+            if (e.shiftKey) {
+                redo();
+            } else {
+                undo();
+            }
+        }
+        if (e.key === 'e') {
+            e.preventDefault();
+            exportCanvas();
+        }
+    }
+    if (e.key === 'e' && !e.ctrlKey && !e.metaKey) {
+        isErasing = !isErasing;
+        document.getElementById('eraserBtn').classList.toggle('active');
+    }
+});
+
+// LocalStorage functions
+function saveToLocalStorage() {
+    try {
+        localStorage.setItem('minedraw_data', JSON.stringify(gridData));
+    } catch (e) {
+        console.error('Error saving to localStorage:', e);
+    }
+}
+
+async function loadFromLocalStorage() {
+    try {
+        const savedData = localStorage.getItem('minedraw_data');
+        if (savedData) {
+            gridData = JSON.parse(savedData);
+            await redrawCanvas();
+            console.log('Dessin chargé depuis la sauvegarde automatique');
+        }
+    } catch (e) {
+        console.error('Error loading from localStorage:', e);
+        initGrid();
+    }
+}
+
+// Load background preference
+function loadBackgroundPreference() {
+    try {
+        const savedBg = localStorage.getItem('minedraw_background');
+        if (savedBg) {
+            document.getElementById('bgSelect').value = savedBg;
+            canvasWrapper.classList.add('bg-' + savedBg);
+        } else {
+            // Default background
+            canvasWrapper.classList.add('bg-day-sun');
+        }
+    } catch (e) {
+        console.error('Error loading background preference:', e);
+        canvasWrapper.classList.add('bg-day-sun');
+    }
+}
+
+// Load grid preference
+function loadGridPreference() {
+    try {
+        const savedGridState = localStorage.getItem('minedraw_showGrid');
+        if (savedGridState !== null) {
+            showGrid = savedGridState === 'true';
+            if (!showGrid) {
+                document.getElementById('gridBtn').classList.remove('active');
+            }
+            drawGrid();
+        }
+    } catch (e) {
+        console.error('Error loading grid preference:', e);
+    }
+}
+
+// Initialize
+async function init() {
+    initGrid();
+    loadBackgroundPreference();
+    loadGridPreference();
+    await loadTextures();
+    await loadFromLocalStorage();
+}
+
+init();
