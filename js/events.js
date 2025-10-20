@@ -6,7 +6,7 @@ import { pickBlock, filterTextures, setCategory } from './textures.js';
 import { toggleGrid } from './grid.js';
 import { exportCanvas } from './export.js';
 import { zoomIn, zoomOut, updateZoom } from './zoom.js';
-import { getActiveLayer } from './layers.js';
+import { getActiveLayer, renderLayersUI } from './layers.js';
 import { saveToLocalStorage } from './storage.js';
 
 export function setupEventListeners() {
@@ -225,13 +225,10 @@ function setupMenuEvents() {
     document.querySelectorAll('[data-bg]').forEach(btn => {
         btn.addEventListener('click', () => {
             const bgValue = btn.dataset.bg;
-            const { canvasWrapper } = canvasElements;
 
-            // Remove all background classes
-            canvasWrapper.classList.remove('bg-day-sun', 'bg-day', 'bg-night-moon', 'bg-night-stars');
-
-            // Add the selected background class
-            canvasWrapper.classList.add('bg-' + bgValue);
+            // Update state (this will be used by redrawCanvas)
+            state.backgroundType = bgValue;
+            state.needsRedraw = true;
 
             // Save preference to localStorage
             localStorage.setItem('minedraw_background', bgValue);
@@ -251,7 +248,9 @@ function setupMenuEvents() {
     });
 
     // Menu Fichier
-    document.getElementById('menuExportBtn').addEventListener('click', exportCanvas);
+    document.getElementById('menuExportPngBtn').addEventListener('click', exportCanvas);
+    document.getElementById('menuExportJsonBtn').addEventListener('click', exportJSON);
+    document.getElementById('menuImportJsonBtn').addEventListener('click', importJSON);
 
     // Quick toolbar
     document.getElementById('quickEraserBtn').addEventListener('click', () => {
@@ -337,4 +336,72 @@ function setupKeyboardShortcuts() {
             updateEraserUI();
         }
     });
+}
+
+// Export drawing to JSON file
+function exportJSON() {
+    try {
+        const saveData = {
+            layers: state.layers,
+            activeLayerId: state.activeLayerId
+        };
+
+        const jsonString = JSON.stringify(saveData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `minedraw-${Date.now()}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        console.log('✅ Dessin exporté en JSON');
+    } catch (e) {
+        console.error('Erreur lors de l\'export JSON:', e);
+        alert('Erreur lors de l\'export JSON');
+    }
+}
+
+// Import drawing from JSON file
+function importJSON() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+
+    input.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+
+            // Validate data structure
+            if (!data.layers || !Array.isArray(data.layers)) {
+                throw new Error('Format JSON invalide');
+            }
+
+            // Load the data
+            state.layers = data.layers;
+            state.activeLayerId = data.activeLayerId || 2;
+            state.needsRedraw = true;
+
+            // Save to localStorage
+            saveToLocalStorage();
+
+            // Update UI
+            renderLayersUI();
+
+            console.log('✅ Dessin importé depuis JSON');
+            alert('Dessin importé avec succès !');
+        } catch (e) {
+            console.error('Erreur lors de l\'import JSON:', e);
+            alert('Erreur lors de l\'import JSON: ' + e.message);
+        }
+    });
+
+    input.click();
 }

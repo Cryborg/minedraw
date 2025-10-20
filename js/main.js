@@ -31,7 +31,7 @@ async function init() {
     startRedrawLoop();
 
     // Load saved drawing (will restore layers if exist and trigger redraw)
-    loadFromLocalStorage();
+    await loadFromLocalStorage();
 
     // Render layers UI after loading
     renderLayersUI();

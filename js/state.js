@@ -6,6 +6,7 @@ export const state = {
     isErasing: false,
     isDeletingInStroke: false,
     showGrid: true,
+    backgroundType: 'day-sun', // Current background type
     layers: [], // Array of layer objects with their own gridData
     activeLayerId: null, // ID of the currently active layer
     undoStack: [],

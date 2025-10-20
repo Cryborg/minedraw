@@ -1,6 +1,5 @@
 // LocalStorage management
 import { state } from './state.js';
-import { canvasElements } from './canvas.js';
 import { redrawCanvas } from './drawing.js';
 import { drawGrid } from './grid.js';
 
@@ -16,7 +15,7 @@ export function saveToLocalStorage() {
     }
 }
 
-export function loadFromLocalStorage() {
+export async function loadFromLocalStorage() {
     try {
         const savedData = localStorage.getItem('minedraw_layers');
         if (savedData) {
@@ -25,9 +24,33 @@ export function loadFromLocalStorage() {
             state.activeLayerId = data.activeLayerId;
             state.needsRedraw = true; // Trigger redraw on next frame
             console.log('Dessin chargé depuis la sauvegarde automatique');
+        } else {
+            // First time user - load demo drawing
+            await loadDemoDrawing();
         }
     } catch (e) {
         console.error('Error loading from localStorage:', e);
+    }
+}
+
+async function loadDemoDrawing() {
+    try {
+        console.log('🔄 Chargement du dessin de démonstration...');
+        const response = await fetch('demo-drawing.json');
+        const demoData = await response.json();
+        state.layers = demoData.layers;
+        state.activeLayerId = demoData.activeLayerId;
+        state.needsRedraw = true;
+        console.log('🎨 Dessin de démonstration chargé - Bienvenue sur MineDraw!');
+        console.log('Layers loaded:', state.layers.length);
+        console.log('Active layer ID:', state.activeLayerId);
+
+        // Force multiple redraws to handle async texture loading
+        setTimeout(() => { state.needsRedraw = true; }, 100);
+        setTimeout(() => { state.needsRedraw = true; }, 500);
+        setTimeout(() => { state.needsRedraw = true; }, 1000);
+    } catch (e) {
+        console.error('Error loading demo drawing:', e);
     }
 }
 
@@ -35,14 +58,14 @@ export function loadBackgroundPreference() {
     try {
         const savedBg = localStorage.getItem('minedraw_background');
         if (savedBg) {
-            canvasElements.canvasWrapper.classList.add('bg-' + savedBg);
+            state.backgroundType = savedBg;
         } else {
             // Default background
-            canvasElements.canvasWrapper.classList.add('bg-day-sun');
+            state.backgroundType = 'day-sun';
         }
     } catch (e) {
         console.error('Error loading background preference:', e);
-        canvasElements.canvasWrapper.classList.add('bg-day-sun');
+        state.backgroundType = 'day-sun';
     }
 }
 

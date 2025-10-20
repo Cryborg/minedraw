@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { canvasElements } from './canvas.js';
 import { saveToLocalStorage } from './storage.js';
 import { getActiveLayer } from './layers.js';
+import { drawBackground } from './background.js';
 
 // Start the redraw loop
 export function startRedrawLoop() {
@@ -98,9 +99,12 @@ export function redrawCanvas() {
     const { drawingCtx, drawingCanvas } = canvasElements;
     drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
 
+    // Draw background FIRST (behind all layers)
+    drawBackground(drawingCtx, state.backgroundType, drawingCanvas.width, drawingCanvas.height);
+
     let hasUnloadedImages = false;
 
-    // Draw all visible layers in order
+    // Draw all visible layers in order (on top of background)
     for (const layer of state.layers) {
         if (!layer.visible) continue;
 
